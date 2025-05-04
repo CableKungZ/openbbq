@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useDebouncedCallback } from 'use-debounce'
-import { tokens, ROUTER02, v3FactoryContract, qouterV2Contract, router02Contract, erc20ABI, v3PoolABI, wrappedNative, CMswapPoolDualRouterContract,CMswapPoolDualRouter } from '@/app/lib/8899'
+import { tokens, ROUTER02, v3FactoryContract, qouterV2Contract, router02Contract, erc20ABI, v3PoolABI, wrappedNative,CMswapPoolDualRouterContract,CMswapPoolDualRouter } from '@/app/lib/8899'
 import { config } from '@/app/config'
 
-export default function Swap({ 
+export default function Swap8899({ 
     setIsLoading, setErrMsg, 
 }: {
     setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
@@ -19,8 +19,8 @@ export default function Swap({
     const { address } = useAccount()
     const [txupdate, setTxupdate] = React.useState("")
     const [exchangeRate, setExchangeRate] = React.useState("")
+    const [fixedExchangeRate, setFixedExchangeRate] = React.useState("")
     const [altRoute, setAltRoute] = React.useState<{a: '0xstring', b: '0xstring', c: '0xstring'}>()
-
     const [CMswapTVL, setCMswapTVL] = React.useState<{tvl10000: string; tvl3000: string; tvl500: string; tvl100: string; exchangeRate: string;}>({tvl10000: "", tvl3000: "", tvl500: "", tvl100: "",exchangeRate: ""});
     const [GameSwapTvl, setGameSwapTvl] = React.useState<{tvl10000: string; tvl3000: string; tvl500: string; tvl100: string;exchangeRate: string;}>({tvl10000: "", tvl3000: "", tvl500: "", tvl100: "", exchangeRate: ""});
 
@@ -34,7 +34,6 @@ export default function Swap({
     const [feeSelect, setFeeSelect] = React.useState(10000)
     const [open, setOpen] = React.useState(false)
     const [open2, setOpen2] = React.useState(false)
-    const [thbRate, setThbRate] = React.useState("")
     const [poolSelect, setPoolSelect] = React.useState("")
     const [bestPool, setBestPool] = React.useState("")
     const [swapDirection, setSwapDirection] = React.useState(false) // false = A->B, true = B->A
@@ -50,9 +49,7 @@ export default function Swap({
         return path
     }
 
-
-
-    const getQoute = useDebouncedCallback(async (_amount: string) => {
+     const getQoute = useDebouncedCallback(async (_amount: string) => {
         if(poolSelect === "CMswap") {
             console.log("get Quote Price with CMswap")
             try {
@@ -178,9 +175,7 @@ export default function Swap({
     }, 700)
 
     const switchToken = () => {
-        setSwapDirection(!swapDirection)
         setExchangeRate("")
-        setPoolSelect("")
         const _tokenA = tokenB
         const _tokenB = tokenA
         setTokenA(_tokenA)
@@ -311,10 +306,10 @@ export default function Swap({
                 | 'swapJUSDTtoJBC'
                 | undefined;
     
-            if (poolAddr === '0x472d0e2E9839c140786D38110b3251d5ED08DF41') {
+            if (poolAddr === '0x472d0e2E9839c140786D38110b3251d5ED08DF41' as '0xstring') {
                 if (tokenAAddr === tokens[0].value.toUpperCase()) useFunction = 'swapJC';
                 else if (tokenAAddr === tokens[2].value.toUpperCase()) useFunction = 'swapCMJtoJBC';
-            } else if (poolAddr === '0x280608DD7712a5675041b95d0000B9089903B569') {
+            } else if (poolAddr === '0x280608DD7712a5675041b95d0000B9089903B569' as '0xstring') {
                 if (tokenAAddr === tokens[0].value.toUpperCase()) useFunction = 'swapJU';
                 else if (tokenAAddr === tokens[1].value.toUpperCase()) useFunction = 'swapJUSDTtoJBC';
             }
@@ -344,25 +339,26 @@ export default function Swap({
             const minOut = expectedOut * BigInt(100 - slippagePercent) / BigInt(100);
     
             // Simulate and write tx (payable vs non-payable)
-            let request;
             if (useFunction === 'swapJC' || useFunction === 'swapJU') {
-                ({ request } = await simulateContract(config, {
+                const { request } = await simulateContract(config, {
                     ...CMswapPoolDualRouterContract,
                     functionName: useFunction,
                     args: [minOut],
                     value: parsedAmountA
-                }));
+                })
+                const tx = await writeContract(config, request)
+                await waitForTransactionReceipt(config, { hash: tx });
+                setTxupdate(tx)
             } else {
-                ({ request } = await simulateContract(config, {
+                const { request } = await simulateContract(config, {
                     ...CMswapPoolDualRouterContract,
                     functionName: useFunction,
                     args: [parsedAmountA, minOut]
-                }));
+                })
+                const tx = await writeContract(config, request)
+                await waitForTransactionReceipt(config, { hash: tx });
+                setTxupdate(tx)
             }
-    
-            const tx = await writeContract(config, request);
-            await waitForTransactionReceipt(config, { hash: tx });
-            setTxupdate(tx);
     
         } catch (e) {
             setErrMsg(e as WriteContractErrorType);
@@ -370,16 +366,9 @@ export default function Swap({
         setIsLoading(false);
     };
     
-    
-
     React.useEffect(() => {
         const fetch0 = async () => {
         setOnLoading(true)
-        const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD')
-            const data = await response.json()
-            const _thbRate = data.rates.THB
-            setThbRate(_thbRate)
-
             tokenA.value.toUpperCase() === tokenB.value.toUpperCase() && setTokenB({name: 'Choose Token', value: '0x' as '0xstring', logo: '../favicon.ico'})
 
             const nativeBal = await getBalance(config, {address: address as '0xstring'})
@@ -783,27 +772,31 @@ export default function Swap({
 
     },[poolSelect, CMswapTVL, GameSwapTvl])
 
+
     React.useEffect(() => {
-        // set best pool while all finished loading
-        if(!onLoading){
-            console.log('onLoading',onLoading)
-            const CMswapRate = Number(CMswapTVL.exchangeRate);
-            const GameSwapRate = Number(GameSwapTvl.exchangeRate);
-             
-            let bestPool;
-            if(!swapDirection){
-                bestPool = CMswapRate < GameSwapRate ? "CMswap" : (GameSwapRate > CMswapRate ? "GameSwap" : "")
-            }else {
-                bestPool = CMswapRate < GameSwapRate ? "CMswap" : (GameSwapRate < CMswapRate ? "GameSwap" : "")
+        if (!onLoading && tokens[0] && tokenA && CMswapTVL && GameSwapTvl) {
+            const CMswapRate = Number(CMswapTVL.exchangeRate || 0);
+            const GameSwapRate = Number(GameSwapTvl.exchangeRate || 0);
+    
+            console.log("tokens[0].value === tokenA.value:", tokens[0].value === tokenA.value);
+            console.log("CMswapRate:", CMswapRate);
+            console.log("GameSwapRate:", GameSwapRate);
+    
+            let bestPool = "";
+    
+            if (tokens[0].value === tokenA.value) {
+                bestPool = CMswapRate > GameSwapRate ? "CMswap" : "GameSwap";
+            } else {
+                bestPool = CMswapRate < GameSwapRate ? "CMswap" : "GameSwap";
             }
     
-            setBestPool(bestPool)
-            if(poolSelect === "" && GameSwapRate != 0 && CMswapRate != 0) {
-                setPoolSelect(bestPool)
+            setBestPool(bestPool);
+    
+            if (poolSelect === "" && GameSwapRate !== 0 && CMswapRate !== 0) {
+                setPoolSelect(bestPool);
             }
         }
-  
-    },[onLoading, CMswapTVL, GameSwapTvl, swapDirection])
+    }, [onLoading, CMswapTVL, GameSwapTvl, tokens, tokenA]);
 
     React.useEffect(() => {
         if(amountA !== "" && !onLoading){
@@ -811,6 +804,7 @@ export default function Swap({
             console.log("pool select change new qoute")
         }
     },[poolSelect])
+
 
     return (
         <div className='space-y-2'>
@@ -830,7 +824,7 @@ export default function Swap({
                     />
                 </div>
                 <div className="flex items-center justify-between">
-                    <input placeholder="0.0" autoFocus className="bg-transparent border-none text-white font-mono text-xl text-white focus:border-0 focus:outline focus:outline-0 p-0 h-auto" value={amountA} onChange={e => {setAmountA(e.target.value); getQoute(e.target.value);}} />
+                    <input placeholder="0.0" autoFocus className="w-[140px] sm:w-[200px] bg-transparent border-none text-white font-mono text-xl text-white focus:border-0 focus:outline focus:outline-0 p-0 h-auto" value={amountA} onChange={e => {setAmountA(e.target.value); getQoute(e.target.value);}} />
                     <Popover open={open} onOpenChange={setOpen}>
                         <PopoverTrigger asChild>
                             <Button variant="outline" role="combobox" aria-expanded={open} className="w-[180px] bg-[#162638] hover:bg-[#1e3048] text-white border-[#00ff9d]/20 font-mono flex items-center justify-between h-10 cursor-pointer">
@@ -902,7 +896,7 @@ export default function Swap({
                     />
                 </div>
                 <div className="flex items-center justify-between">
-                    <input placeholder="0.0" className="bg-transparent border-none text-white font-mono text-xl text-white focus:border-0 focus:outline focus:outline-0 p-0 h-auto" value={amountB} readOnly />
+                    <input placeholder="0.0" className="w-[140px] sm:w-[200px] bg-transparent border-none text-white font-mono text-xl text-white focus:border-0 focus:outline focus:outline-0 p-0 h-auto" value={amountB} readOnly />
                     <Popover open={open2} onOpenChange={setOpen2}>
                         <PopoverTrigger asChild>
                             <Button variant="outline" role="combobox" aria-expanded={open2} className="w-[180px] bg-[#162638] hover:bg-[#1e3048] text-white border-[#00ff9d]/20 font-mono flex items-center justify-between h-10 cursor-pointer">
@@ -953,56 +947,56 @@ export default function Swap({
             <div className="mt-6">
 
 
-                {/** LIQUIDITY SELECTION  */}
-                <div className="flex justify-between items-center my-2">
-                    <span className="text-gray-400 font-mono text-xs">Liquidity Available</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 h-[70px] ">
-                <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (poolSelect === "CMswap" ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setPoolSelect("CMswap")}>
-                    <span className='flex items-center gap-1'>
-                        CMswap {bestPool === "CMswap" && (<span className="bg-yellow-500/10 text-yellow-300 border border-yellow-300/20 rounded px-1.5 py-0.5 text-[10px] font-semibold">Best Price</span>)}
-                    </span>
-                    {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL[`tvl${feeSelect}` as keyof typeof CMswapTVL]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL[`tvl${feeSelect}` as keyof typeof CMswapTVL]))} {tokenB.name}</span>}
-                </Button>
-                {Number(GameSwapTvl['tvl10000']) > 0 && (
-                    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (poolSelect === "GameSwap" ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setPoolSelect("GameSwap")}>
-                        <span className='flex items-center gap-1'>
-                            GameSwap {bestPool === "GameSwap" && (<span className="bg-yellow-500/10 text-yellow-300 border border-yellow-300/20 rounded px-1.5 py-0.5 text-[10px] font-semibold">Best Price</span>)}
-                        </span>
-                    {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(GameSwapTvl['tvl10000']) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(GameSwapTvl['tvl10000']))} {tokenB.name}</span>}
-                </Button>
-                )}
-               
-                </div>
+{/** LIQUIDITY SELECTION  */}
+<div className="flex justify-between items-center my-2">
+    <span className="text-gray-400 font-mono text-xs">Liquidity Available</span>
+</div>
+<div className="grid grid-cols-2 gap-2 h-[70px] ">
+<Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (poolSelect === "CMswap" ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setPoolSelect("CMswap")}>
+    <span className='flex items-center gap-1'>
+        CMswap {bestPool === "CMswap" && (<span className="bg-yellow-500/10 text-yellow-300 border border-yellow-300/20 rounded px-1.5 py-0.5 text-[10px] font-semibold">Best Price</span>)}
+    </span>
+    {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL[`tvl${feeSelect}` as keyof typeof CMswapTVL]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL[`tvl${feeSelect}` as keyof typeof CMswapTVL]))} {tokenB.name}</span>}
+</Button>
+{Number(GameSwapTvl['tvl10000']) > 0 && (
+    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (poolSelect === "GameSwap" ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setPoolSelect("GameSwap")}>
+        <span className='flex items-center gap-1'>
+            GameSwap {bestPool === "GameSwap" && (<span className="bg-yellow-500/10 text-yellow-300 border border-yellow-300/20 rounded px-1.5 py-0.5 text-[10px] font-semibold">Best Price</span>)}
+        </span>
+        {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(GameSwapTvl['tvl10000']) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(GameSwapTvl['tvl10000']))} {tokenB.name}</span>}
+    </Button>
+    )}
 
-                {/** FEE SELECTION  */}
-                {poolSelect === "CMswap" && (
-                    <><div className="flex justify-between items-center my-2">
-                    <span className="text-gray-400 font-mono text-xs">Swap fee tier</span>
-                </div>
-                <div className="grid grid-cols-4 gap-2 h-[70px]">
-                    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (feeSelect === 100 ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setFeeSelect(100)}>
-                        <span>0.01%</span>
-                        {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL["tvl100"]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL["tvl100"]))} {tokenB.name}</span>}
-                    </Button>
-                    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (feeSelect === 500 ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setFeeSelect(500)}>
-                        <span>0.05%</span>
-                        {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL["tvl500"]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL["tvl500"]))} {tokenB.name}</span>}
-                    </Button>
-                    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (feeSelect === 3000 ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setFeeSelect(3000)}>
-                        <span>0.3%</span>
-                        {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL["tvl3000"]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL["tvl3000"]))} {tokenB.name}</span>}
-                    </Button>
-                    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (feeSelect === 10000 ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setFeeSelect(10000)}>
-                        <span>1%</span>
-                        {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL["tvl10000"]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL["tvl10000"]))} {tokenB.name}</span>}
-                    </Button>
-                </div>
-                    </>
-                )}
-    
-               
-            </div>
+    </div>
+
+{/** FEE SELECTION  */}
+{poolSelect === "CMswap" && (
+    <><div className="flex justify-between items-center my-2">
+    <span className="text-gray-400 font-mono text-xs">Swap fee tier</span>
+</div>
+<div className="grid grid-cols-4 gap-2 h-[70px]">
+    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (feeSelect === 100 ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setFeeSelect(100)}>
+        <span>0.01%</span>
+        {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL["tvl100"]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL["tvl100"]))} {tokenB.name}</span>}
+    </Button>
+    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (feeSelect === 500 ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setFeeSelect(500)}>
+        <span>0.05%</span>
+        {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL["tvl500"]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL["tvl500"]))} {tokenB.name}</span>}
+    </Button>
+    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (feeSelect === 3000 ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setFeeSelect(3000)}>
+        <span>0.3%</span>
+        {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL["tvl3000"]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL["tvl3000"]))} {tokenB.name}</span>}
+    </Button>
+    <Button variant="outline" className={"font-mono h-full px-3 py-2 rounded-md gap-1 flex flex-col items-start text-xs overflow-hidden " + (feeSelect === 10000 ? "bg-[#162638] text-[#00ff9d] border-[#00ff9d]/30" : "bg-[#0a0b1e]/80 text-gray-400 border-[#00ff9d]/10 hover:bg-[#162638] hover:text-[#00ff9d]/80 cursor-pointer")} onClick={() => setFeeSelect(10000)}>
+        <span>1%</span>
+        {tokenB.value !== '0x' as '0xstring' && <span className={'truncate' + (Number(CMswapTVL["tvl10000"]) > 0 ? ' text-emerald-300' : '')}>TVL: {Intl.NumberFormat('en-US', { notation: "compact" , compactDisplay: "short" }).format(Number(CMswapTVL["tvl10000"]))} {tokenB.name}</span>}
+    </Button>
+</div>
+    </>
+)}
+
+
+        </div>
             {tokenA.value !== '0x' as '0xstring' && tokenB.value !== '0x' as '0xstring' && Number(amountA) !== 0 && Number(amountA) <= Number(tokenABalance) && Number(amountB) !== 0 ?
                 <Button className="w-full bg-[#00ff9d]/10 hover:bg-[#00ff9d]/20 text-[#00ff9d] border border-[#00ff9d]/30 rounded-md py-6 font-mono mt-4 cursor-pointer" onClick={handleSwap}>Swap</Button> :
                 <Button disabled className="w-full bg-[#00ff9d]/10 text-[#00ff9d] border border-[#00ff9d]/30 rounded-md py-6 font-mono mt-4">Swap</Button>
@@ -1018,20 +1012,25 @@ export default function Swap({
                     <>
                         <div className="flex items-center text-gray-500 font-mono text-xs my-2">
                             <span className="mr-1">price qoute</span>
-                            {exchangeRate !== '0' ? <span className="text-[#00ff9d] font-mono text-xs px-2 gap-1">1 {tokenA.name} = {Number(1/Number(exchangeRate)).toFixed(4)} {tokenB.name}</span> : <span className="text-red-500 px-2">insufficient liquidity</span>}
+                            {exchangeRate !== '0' ? <span className="text-[#00ff9d] font-mono text-xs px-2 gap-1">1 {tokenB.name} = {Number(exchangeRate).toFixed(4)} {tokenA.name}</span> : <span className="text-red-500 px-2">insufficient liquidity</span>}
                             {Number(amountB) > 0 && 
-                                <span>[PI: {((Number(newPrice) * 100) / Number(exchangeRate)) - 100 <= 100 ? (((Number(newPrice) * 100) / Number(exchangeRate)) - 100).toFixed(4) : ">100"}%]</span>
+                                <span>[PI: {
+                                    ((Number(newPrice) * 100) / Number(1 / Number(fixedExchangeRate))) - 100 <= 100 ? 
+                                        ((Number(newPrice) * 100) / Number(1 / Number(fixedExchangeRate))) - 100 > 0 ?
+                                            ((100 - ((Number(newPrice) * 100) / Number(1 / Number(fixedExchangeRate)))) * -1).toFixed(4) :
+                                            (100 - ((Number(newPrice) * 100) / Number(1 / Number(fixedExchangeRate)))).toFixed(4) 
+                                        : 
+                                        ">100"
+                                }%]</span>
                             } 
                         </div>
                         {(tokenA.name === 'JUSDT' || tokenB.name === 'JUSDT') &&
                             <div className="flex items-center text-gray-500 font-mono text-xs my-2">
                                 <span className="mr-1">token price</span>
                                 {exchangeRate !== '0' && exchangeRate !== '' && <span className="text-white font-mono text-xs px-2 gap-1">
-                                    {tokenA.name === 'JUSDT' ?
-                                        <span>{Number(Number(exchangeRate) * Number(thbRate)).toFixed(2)} </span> : 
-                                        <span>{Number((1 / Number(exchangeRate)) * Number(thbRate)).toFixed(2)} </span>
-                                    }
-                                    ฿
+                                    {tokenA.name === 'JUSDT' && <span>{Number(exchangeRate).toFixed(2)} </span>}
+                                    {tokenB.name === 'JUSDT' && <span>{Number(1 / Number(exchangeRate)).toFixed(2)} </span>}
+                                    $
                                 </span>}
                             </div>
                         }
